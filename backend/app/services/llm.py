@@ -6,11 +6,6 @@ Priority:
   2. OPENAI_API_KEY environment variable (OpenAI)
   3. ANTHROPIC_API_KEY environment variable (Anthropic / Claude)
   4. Mock fallback — returns pre-computed seed data (no key required)
-
-The caller decides which provider by key prefix:
-  - sk-ant-*  → Anthropic Messages API
-  - sk-*      → OpenAI Chat Completions API
-  - everything else → treated as OpenAI-compatible (custom base URL possible)
 """
 
 import os
@@ -21,9 +16,6 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Provider detection
-# ---------------------------------------------------------------------------
 
 def _detect_provider(key: str) -> str:
     """Return 'anthropic' or 'openai' based on key prefix."""
@@ -31,10 +23,6 @@ def _detect_provider(key: str) -> str:
         return "anthropic"
     return "openai"
 
-
-# ---------------------------------------------------------------------------
-# Key resolution
-# ---------------------------------------------------------------------------
 
 def resolve_key(request_key: Optional[str] = None) -> Optional[str]:
     """
@@ -50,10 +38,6 @@ def resolve_key(request_key: Optional[str] = None) -> Optional[str]:
 def has_real_key(request_key: Optional[str] = None) -> bool:
     return resolve_key(request_key) is not None
 
-
-# ---------------------------------------------------------------------------
-# OpenAI call
-# ---------------------------------------------------------------------------
 
 async def _call_openai(key: str, system: str, user: str, max_tokens: int = 512) -> str:
     headers = {
@@ -79,10 +63,6 @@ async def _call_openai(key: str, system: str, user: str, max_tokens: int = 512) 
         return data["choices"][0]["message"]["content"]
 
 
-# ---------------------------------------------------------------------------
-# Anthropic call
-# ---------------------------------------------------------------------------
-
 async def _call_anthropic(key: str, system: str, user: str, max_tokens: int = 512) -> str:
     headers = {
         "x-api-key": key,
@@ -105,10 +85,6 @@ async def _call_anthropic(key: str, system: str, user: str, max_tokens: int = 51
         data = resp.json()
         return data["content"][0]["text"]
 
-
-# ---------------------------------------------------------------------------
-# Unified call
-# ---------------------------------------------------------------------------
 
 async def call_llm(
     system: str,
@@ -139,10 +115,6 @@ async def call_llm(
         return "", False
 
 
-# ---------------------------------------------------------------------------
-# High-level: ticket estimation
-# ---------------------------------------------------------------------------
-
 ESTIMATE_SYSTEM = """You are an agile estimation assistant.
 Given a ticket description and a list of similar completed tickets (with story points and cycle days),
 estimate the story points for the new ticket.
@@ -156,6 +128,7 @@ Respond with ONLY valid JSON in exactly this shape:
 }
 No markdown, no extra keys."""
 
+
 async def estimate_ticket(
     ticket: dict,
     similar_tickets: list[dict],
@@ -163,52 +136,56 @@ async def estimate_ticket(
     mock_estimate: Optional[dict] = None,
 ) -> dict:
     """
-    Return an estimate dict.  Falls back to mock_estimate when no key available
+    Return an estimate dict. Falls back to mock_estimate when no key available
     or if the LLM call fails.
     """
-    key = resolve_key(api_key)
-    if not key:
+    # Build similar_summary
+    if similar_tickets:
+        similar_summary = "\n".join([
+            f"- {st.get('id', 'N/A')}: \"{st.get('title', 'Untitled')}\" — {st.get('story_points', 'N/A')} pts, {st.get('cycle_days', 'N/A')} days"
+            for st in similar_tickets
+        ])
+    else:
+        similar_summary = "No similar tickets found."
+    
+    # Build user message
+    user_msg = f"""Ticket: {ticket['id']} — "{ticket['title']}"
+Description: {ticket.get('description', 'No description')}
+
+Similar completed tickets:
+{similar_summary}
+
+Estimate story points for this ticket."""
+    
+    try:
+        raw, is_real = await call_llm(ESTIMATE_SYSTEM, user_msg, api_key=api_key, max_tokens=256)
+        
+        if not is_real:
+            return {**(mock_estimate or {}), "source": "mock"}
+        
+        # Strip markdown fences and parse JSON
+        cleaned = raw.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        cleaned = cleaned.rstrip("```").strip()
+        
+        parsed = json.loads(cleaned)
+        
+        # Validate required fields
+        required = ["points", "low", "high", "rationale"]
+        if all(k in parsed for k in required):
+            return {**parsed, "source": "llm"}
+        
+        # Missing fields, use mock
+        logger.warning(f"LLM estimate missing fields: {parsed}")
+        return {**(mock_estimate or {}), "source": "mock"}
+    
+    except (json.JSONDecodeError, Exception) as e:
+        logger.warning(f"Error parsing LLM estimate: {e}. Raw: {raw if 'raw' in locals() else 'N/A'}")
         return {**(mock_estimate or {}), "source": "mock"}
 
-    # -------------------------------------------------------------------------
-    # TODO — implement the LLM estimation call
-    # -------------------------------------------------------------------------
-    # The key and similar_tickets are already resolved above.
-    # Steps:
-    #   1. Build similar_summary — one line per similar ticket:
-    #        "- {id}: \"{title}\" — {story_points} pts, {actual_cycle_days} days"
-    #      If similar_tickets is empty, use "No similar tickets found."
-    #
-    #   2. Build user_msg:
-    #        "Ticket: {ticket['id']} — \"{ticket['title']}\"\n"
-    #        "Description: {ticket['description']}\n\n"
-    #        "Similar completed tickets:\n{similar_summary}\n\n"
-    #        "Estimate story points for this ticket."
-    #
-    #   3. Call:  raw, is_real = await call_llm(ESTIMATE_SYSTEM, user_msg,
-    #                                           api_key=api_key, max_tokens=256)
-    #      If not is_real → return {**(mock_estimate or {}), "source": "mock"}
-    #
-    #   4. Strip markdown fences from raw:
-    #        cleaned = raw.strip().strip("```json").strip("```").strip()
-    #      Parse with json.loads(cleaned).
-    #
-    #   5. Return {**parsed, "source": "llm"}.
-    #
-    #   6. On any exception → log the raw snippet, return mock fallback.
-    #
-    # Expected output shape: {"points": int, "low": int, "high": int,
-    #                          "rationale": str, "source": "llm"}
-    # -------------------------------------------------------------------------
-    raise NotImplementedError(
-        "estimate_ticket LLM path not implemented — "
-        "set X-LLM-Key header and implement this function to activate real estimation"
-    )
-
-
-# ---------------------------------------------------------------------------
-# High-level: standup digest
-# ---------------------------------------------------------------------------
 
 DIGEST_SYSTEM = """You are a scrum master AI assistant writing a daily sprint digest.
 Given the current sprint state (tickets, statuses, burndown, at-risk items),
@@ -231,6 +208,7 @@ Structure it exactly as:
 
 Be specific and factual. Use the data provided. Keep it under 300 words."""
 
+
 async def generate_digest(
     sprint_state: dict,
     burndown: dict,
@@ -246,39 +224,57 @@ async def generate_digest(
     key = resolve_key(api_key)
     if not key:
         return mock_digest or "", "mock"
+    
+    # Build tickets summary
+    tickets = sprint_state.get("tickets", [])
+    if tickets:
+        tickets_summary = "\n".join([
+            f"  - {t['id']} ({t.get('title', 'Untitled')}): status={t.get('status', 'unknown')}, assignee={t.get('assignee', 'unassigned')}, pts={t.get('points', 'N/A')}"
+            for t in tickets
+        ])
+    else:
+        tickets_summary = "  No tickets in sprint."
+    
+    # Build at-risk summary
+    if at_risk:
+        at_risk_summary = "\n".join([
+            f"  - {item['ticket_id']} [{item.get('risk_level', 'UNKNOWN')}]: {item.get('reason', 'No reason')}"
+            for item in at_risk
+        ])
+    else:
+        at_risk_summary = "  None"
+    
+    # Find remaining points
+    total_points = burndown.get("total_points", 0)
+    actuals = burndown.get("actual", [])
+    remaining = total_points
+    for v in reversed(actuals):
+        if v is not None:
+            remaining = v
+            break
+    
+    sprint_number = sprint_state.get("sprint_number", "N/A")
+    
+    # Build user message
+    user_msg = f"""Sprint {sprint_number}, Day {day} ({date_str})
+Remaining points: {remaining} of {total_points}
 
-    # -------------------------------------------------------------------------
-    # TODO — implement the LLM digest generation call
-    # -------------------------------------------------------------------------
-    # The key, sprint_state, burndown, and at_risk are already available.
-    # Steps:
-    #   1. Build tickets_summary — one line per ticket:
-    #        "  - {id} ({title}): status={status}, assignee={assignee}, pts={pts}"
-    #
-    #   2. Build at_risk_summary — one line per item:
-    #        "  - {ticket_id} [{risk_level}]: {reason}"
-    #      Use "None" if at_risk is empty.
-    #
-    #   3. Find remaining points = last non-None value in burndown["actual"].
-    #
-    #   4. Build user_msg:
-    #        "Sprint {sprint_number}, Day {day} ({date_str})\n"
-    #        "Remaining points: {remaining} of {total_points}\n\n"
-    #        "Tickets:\n{tickets_summary}\n\n"
-    #        "At-risk:\n{at_risk_summary}\n\n"
-    #        "Write the daily standup digest."
-    #
-    #   5. Call:  raw, is_real = await call_llm(DIGEST_SYSTEM, user_msg,
-    #                                           api_key=api_key, max_tokens=512)
-    #      If not is_real → return mock_digest or "", "mock"
-    #
-    #   6. Return raw.strip(), "llm"
-    #
-    # Expected output: (markdown_string, "llm")
-    # The markdown must follow the DIGEST_SYSTEM structure:
-    #   🟢 Completed yesterday / 🔵 In progress today / 🔴 Blockers / ⚠️ Alert
-    # -------------------------------------------------------------------------
-    raise NotImplementedError(
-        "generate_digest LLM path not implemented — "
-        "set X-LLM-Key header and implement this function to activate real digests"
-    )
+Tickets:
+{tickets_summary}
+
+At-risk:
+{at_risk_summary}
+
+Write the daily standup digest."""
+    
+    try:
+        raw, is_real = await call_llm(DIGEST_SYSTEM, user_msg, api_key=api_key, max_tokens=512)
+        
+        if not is_real:
+            return mock_digest or "", "mock"
+        
+        return raw.strip(), "llm"
+    
+    except Exception as e:
+        logger.warning(f"Error generating digest: {e}")
+        return mock_digest or "", "mock"

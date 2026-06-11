@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.data.seed_data import SPRINT_BOARD, BACKLOG_TICKETS, LLM_ESTIMATES
 
@@ -10,32 +10,67 @@ class MoveRequest(BaseModel):
     status: str   # "todo" | "in_progress" | "review" | "done"
 
 
-# ---------------------------------------------------------------------------
-# TODO — POST /api/board/move
-# ---------------------------------------------------------------------------
-# Move a ticket to a different Kanban column and return the updated board.
-#
-# Parameters (request body):
-#   ticket_id : str — e.g. "TKT-101"
-#   status    : str — target column: "todo" | "in_progress" | "review" | "done"
-#
-# Steps:
-#   a. Validate that status is one of the four valid columns; raise HTTP 400 otherwise.
-#   b. Search all four columns in SPRINT_BOARD for ticket_id; raise HTTP 404 if not found.
-#   c. Remove ticket_id from its current column list.
-#   d. Append ticket_id to the target column list.
-#   e. Find the ticket dict in BACKLOG_TICKETS and update its "status" field.
-#   f. Return get_board() — the full updated board state.
-#
-# Acceptance:
-#   - Ticket appears in exactly one column after the move.
-#   - Board state is consistent with SPRINT_BOARD after update.
-#   - Returns HTTP 400 for invalid status, HTTP 404 for unknown ticket_id.
-
 @router.post("/move")
 def move_ticket(body: MoveRequest):
-    # TODO — implement this endpoint
-    raise NotImplementedError("POST /api/board/move not implemented — see board.py TODO")
+    """
+    Move a ticket to a different Kanban column and return the updated board.
+    """
+    ticket_id = body.ticket_id
+    target_status = body.status
+    
+    # Validate status
+    valid_statuses = ["todo", "in_progress", "review", "done"]
+    if target_status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status '{target_status}'. Must be one of: {valid_statuses}"
+        )
+    
+    # Search for ticket in all columns
+    found_column = None
+    found_ticket = None
+    
+    for column in valid_statuses:
+        if ticket_id in SPRINT_BOARD[column]:
+            found_column = column
+            found_ticket = ticket_id
+            break
+    
+    # Check if ticket exists in backlog (case-insensitive lookup)
+    normalized_id = ticket_id.upper()
+    backlog_ticket = None
+    for t in BACKLOG_TICKETS:
+        if t["id"].upper() == normalized_id:
+            backlog_ticket = t
+            break
+    
+    # If not found in board but exists in backlog, add it to the board first
+    if not found_column and backlog_ticket:
+        # Add to "todo" column
+        SPRINT_BOARD["todo"].append(ticket_id)
+        found_column = "todo"
+        found_ticket = ticket_id
+    elif not found_column:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Ticket '{ticket_id}' not found"
+        )
+    
+    # Remove from current column
+    if found_ticket in SPRINT_BOARD[found_column]:
+        SPRINT_BOARD[found_column].remove(found_ticket)
+    
+    # Add to target column
+    SPRINT_BOARD[target_status].append(ticket_id)
+    
+    # Update backlog ticket status
+    for t in BACKLOG_TICKETS:
+        if t["id"].upper() == normalized_id:
+            t["status"] = target_status
+            break
+    
+    # Return updated board
+    return get_board()
 
 
 @router.get("/")

@@ -1,131 +1,69 @@
 """
 SprintPilot — Monte-Carlo Slippage Forecast Engine
 ====================================================
-TASK  ★★★
-
-Replace the hardcoded SLIPPAGE_FORECAST seed data with a real probabilistic model.
-
-Algorithm overview
-------------------
-1. Read the team's historical velocity distribution from SPRINT_HISTORY.
-2. Run N simulations (default 10 000). Each simulation samples a daily throughput
-   from a normal distribution until remaining story-points reach zero or days run out.
-3. For every sprint day d, completion_probability[d] = fraction of simulations
-   that finished on or before day d.
-4. Return a list of { day, date, completion_probability, remaining_points } dicts.
-
-Acceptance criteria (tested by the 218-check suite)
-----------------------------------------------------
-- Probabilities are monotonically non-increasing.
-- All probability values in [0.0, 1.0].
-- List length == len(sprint_dates).
-- Runs in < 2 s for n_simulations=10_000.
-- remaining_points uses burndown actuals for past days, projected mean burn for future.
+Implemented ✅
 """
 import random
 import statistics
 from typing import Optional
 
 
-# ---------------------------------------------------------------------------
-# TODO 1 — build_velocity_distribution()
-# ---------------------------------------------------------------------------
-# Derive a per-day (mean, stdev) velocity from sprint history.
-#
-# Parameters:
-#   sprint_history : list[dict]  — each dict has "velocity" (points per sprint)
-#   sprint_days    : int         — working days per sprint (default 10)
-#
-# Steps:
-#   a. Extract the list of velocity values: [s["velocity"] for s in sprint_history]
-#   b. Convert to daily rate: daily = velocity / sprint_days
-#   c. Compute mean  = statistics.mean(daily_rates)
-#      Compute stdev = statistics.stdev(daily_rates)   # sample stdev, n-1
-#   d. Return (mean_daily, stdev_daily)
-#
-# Example: sprint velocities [28,34,30,38,36,40,38,42] and sprint_days=10
-#   → daily rates ≈ [2.8, 3.4, 3.0, 3.8, 3.6, 4.0, 3.8, 4.2]
-#   → mean ≈ 3.575, stdev ≈ 0.46
-#
-# Acceptance: mean ≈ AVG_VELOCITY / sprint_days (within 0.01)
-
 def build_velocity_distribution(
     sprint_history: list,
     sprint_days: int = 10,
 ) -> tuple:
-    # TODO 1 — implement this function
-    raise NotImplementedError("build_velocity_distribution not implemented")
+    """
+    Derive a per-day (mean, stdev) velocity from sprint history.
+    """
+    if not sprint_history:
+        return (3.5, 1.0)  # Default fallback
+    
+    # Extract velocity values and convert to daily rate
+    velocities = [s["velocity"] for s in sprint_history]
+    daily_rates = [v / sprint_days for v in velocities]
+    
+    # Compute mean and sample standard deviation
+    mean_daily = statistics.mean(daily_rates)
+    
+    # Handle case with only one sprint (stdev requires at least 2 values)
+    if len(daily_rates) < 2:
+        stdev_daily = mean_daily * 0.1  # Assume 10% variance
+    else:
+        stdev_daily = statistics.stdev(daily_rates)
+    
+    return (mean_daily, stdev_daily)
 
-
-# ---------------------------------------------------------------------------
-# TODO 2 — project_remaining_points()
-# ---------------------------------------------------------------------------
-# For future days, project the expected remaining points using the mean burn rate.
-#
-# Parameters:
-#   burndown_actual : list        — actual remaining points; None for future days
-#   mean_daily      : float       — mean daily burn rate from build_velocity_distribution
-#
-# Steps:
-#   a. Find the last non-None value and its index.
-#   b. For each subsequent index, subtract mean_daily from the previous value.
-#      Clamp to 0 (remaining cannot go negative).
-#   c. Return the full list with None values replaced by projected integers.
-#
-# Acceptance: list length unchanged, no None values in output.
 
 def project_remaining_points(
     burndown_actual: list,
     mean_daily: float,
 ) -> list:
-    # TODO 2 — implement this function
-    raise NotImplementedError("project_remaining_points not implemented")
+    """
+    For future days, project the expected remaining points using the mean burn rate.
+    """
+    if not burndown_actual:
+        return []
+    
+    result = burndown_actual.copy()
+    
+    # Find the last non-None value and its index
+    last_value = None
+    last_index = -1
+    for i, v in enumerate(result):
+        if v is not None:
+            last_value = v
+            last_index = i
+    
+    if last_value is None or last_index == -1:
+        return result
+    
+    # Project future values by subtracting mean daily burn
+    for i in range(last_index + 1, len(result)):
+        last_value = max(0.0, last_value - mean_daily)
+        result[i] = round(last_value)
+    
+    return result
 
-
-# ---------------------------------------------------------------------------
-# TODO 3 — run_simulation()
-# ---------------------------------------------------------------------------
-# Core Monte-Carlo engine. Called by GET /api/forecast/slippage.
-#
-# Parameters:
-#   remaining_points : int        — story points still to burn
-#   days_left        : int        — calendar days remaining in sprint
-#   sprint_history   : list[dict] — from seed_data.SPRINT_HISTORY
-#   sprint_dates     : list[str]  — ISO date strings, one per remaining day
-#   burndown_actual  : list       — from BURNDOWN["actual"], may contain None
-#   n_simulations    : int        — default 10_000
-#
-# Steps:
-#   a. Call build_velocity_distribution(sprint_history) → (mean, stdev).
-#   b. For each simulation i in range(n_simulations):
-#        remaining = remaining_points
-#        for day d in range(days_left):
-#          daily_burn = max(0.0, random.gauss(mean, stdev))
-#          remaining  = max(0.0, remaining - daily_burn)
-#          if remaining == 0:
-#            record finish[i] = d
-#            break
-#        else:
-#          record finish[i] = days_left  # did not finish
-#   c. For each day d in 0..days_left-1:
-#        prob = len([f for f in finish if f <= d]) / n_simulations
-#   d. Call project_remaining_points(burndown_actual, mean) for the output.
-#   e. Build and return list of dicts:
-#        [
-#          {
-#            "day": d + 1,
-#            "date": sprint_dates[d],
-#            "completion_probability": round(prob, 2),
-#            "remaining_points": projected[d],
-#          }
-#          for d in range(days_left)
-#        ]
-#
-# Acceptance:
-#   - probs[i] >= probs[i+1] for all i  (monotonically non-increasing)
-#   - all(0.0 <= p <= 1.0 for p in probs)
-#   - len(result) == len(sprint_dates)
-#   - Completes in < 2 s for n_simulations=10_000
 
 def run_simulation(
     remaining_points: int,
@@ -135,5 +73,55 @@ def run_simulation(
     burndown_actual: list,
     n_simulations: int = 10_000,
 ) -> list:
-    # TODO 3 — implement this function
-    raise NotImplementedError("run_simulation not implemented")
+    """
+    Core Monte-Carlo engine. Run simulations to produce completion probabilities.
+    """
+    if days_left <= 0 or remaining_points <= 0:
+        return []
+    
+    # Build velocity distribution from history
+    mean_daily, stdev_daily = build_velocity_distribution(sprint_history, days_left)
+    
+    # Ensure stdev is positive
+    stdev_daily = max(stdev_daily, 0.01)
+    
+    # Run simulations
+    finish_days = []  # Record which day each simulation finished
+    
+    for _ in range(n_simulations):
+        remaining = float(remaining_points)
+        finished_on = days_left  # Default: didn't finish
+        
+        for day in range(days_left):
+            # Sample daily burn from normal distribution
+            daily_burn = max(0.0, random.gauss(mean_daily, stdev_daily))
+            remaining = max(0.0, remaining - daily_burn)
+            
+            if remaining == 0:
+                finished_on = day
+                break
+        
+        finish_days.append(finished_on)
+    
+    # Calculate completion probability for each day
+    result = []
+    for day in range(days_left):
+        # Count simulations that finished on or before this day
+        finished_count = sum(1 for f in finish_days if f <= day)
+        prob = finished_count / n_simulations
+        result.append(round(prob, 2))
+    
+    # Project remaining points
+    projected_points = project_remaining_points(burndown_actual, mean_daily)
+    
+    # Build output with dates
+    output = []
+    for day in range(days_left):
+        output.append({
+            "day": day + 1,
+            "date": sprint_dates[day] if day < len(sprint_dates) else f"Day {day + 1}",
+            "completion_probability": result[day],
+            "remaining_points": projected_points[day] if day < len(projected_points) else 0,
+        })
+    
+    return output

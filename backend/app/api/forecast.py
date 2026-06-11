@@ -3,55 +3,62 @@ from app.data.seed_data import (
     SLIPPAGE_FORECAST, AT_RISK_ITEMS, AVG_VELOCITY, SPRINT_HISTORY,
     BURNDOWN, PROPOSED_SPRINT,
 )
+from app.services.monte_carlo import run_simulation
 
 router = APIRouter()
 
 
 @router.get("/slippage")
 def get_slippage_forecast():
-    # -------------------------------------------------------------------------
-    # TODO — replace static seed data with live Monte-Carlo forecast
-    # -------------------------------------------------------------------------
-    # Currently this endpoint returns the hardcoded SLIPPAGE_FORECAST list.
-    # Implement the real forecast by calling monte_carlo.run_simulation().
-    #
-    # Steps:
-    #   1. Import run_simulation from app.services.monte_carlo.
-    #
-    #   2. Read current state:
-    #        current_day     = number of non-None values in BURNDOWN["actual"]
-    #        remaining_pts   = last non-None value in BURNDOWN["actual"]
-    #        days_left       = BURNDOWN["total_points"] — already 10 total days,
-    #                          so days_left = 10 - current_day
-    #        sprint_dates    = BURNDOWN["days"][current_day:]   (future dates)
-    #        burndown_actual = BURNDOWN["actual"]
-    #
-    #   3. Call (note: run_simulation is sync in this implementation):
-    #        forecast = run_simulation(
-    #            remaining_points = remaining_pts,
-    #            days_left        = days_left,
-    #            sprint_history   = SPRINT_HISTORY,
-    #            sprint_dates     = sprint_dates,
-    #            burndown_actual  = burndown_actual,
-    #        )
-    #
-    #   4. Derive:
-    #        current_prob = forecast[0]["completion_probability"]  if forecast else None
-    #        trend = "declining" if len(forecast) > 1 and
-    #                forecast[-1]["prob"] < forecast[0]["prob"] else "stable"
-    #
-    #   5. Return the same shape as below but with live forecast data.
-    #
-    # Until implemented, the endpoint falls back to static seed data.
-    # -------------------------------------------------------------------------
-
-    current_day = 6
-    current_prob = next(
-        (f["completion_probability"] for f in SLIPPAGE_FORECAST if f["day"] == current_day), None
-    )
-    trend = "declining"
+    """
+    Get Monte-Carlo slippage forecast using live simulation.
+    """
+    # Get current state from burndown
+    actuals = BURNDOWN.get("actual", [])
+    sprint_dates = BURNDOWN.get("days", [])
+    total_points = BURNDOWN.get("total_points", 0)
+    
+    # Find current day (last non-None actual value)
+    current_day = 0
+    remaining_pts = total_points
+    for i, v in enumerate(actuals):
+        if v is not None:
+            current_day = i + 1
+            remaining_pts = v
+    
+    # Calculate remaining days
+    days_left = 10 - current_day
+    
+    if days_left > 0 and remaining_pts > 0:
+        # Get remaining dates
+        sprint_dates_remaining = sprint_dates[current_day:] if current_day < len(sprint_dates) else []
+        
+        # Run Monte Carlo simulation
+        forecast = run_simulation(
+            remaining_points=int(remaining_pts),
+            days_left=days_left,
+            sprint_history=SPRINT_HISTORY,
+            sprint_dates=sprint_dates_remaining,
+            burndown_actual=actuals,
+        )
+        
+        # Determine trend
+        if len(forecast) > 1:
+            prob_first = forecast[0]["completion_probability"]
+            prob_last = forecast[-1]["completion_probability"]
+            trend = "declining" if prob_last < prob_first else "stable"
+        else:
+            trend = "stable"
+        
+        current_prob = forecast[0]["completion_probability"] if forecast else 0.5
+    else:
+        # Sprint complete or past end
+        forecast = SLIPPAGE_FORECAST
+        current_prob = 1.0 if remaining_pts == 0 else 0.0
+        trend = "complete" if remaining_pts == 0 else "failed"
+    
     return {
-        "forecast": SLIPPAGE_FORECAST,
+        "forecast": forecast,
         "current_day": current_day,
         "current_probability": current_prob,
         "trend": trend,

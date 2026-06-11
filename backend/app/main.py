@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
-from app.api import backlog, sprint, forecast, team, board, integrations
+from app.api import backlog, sprint, forecast, team, board, integrations, scenarios
 from app.services.llm import has_real_key
 
 app = FastAPI(title="SprintPilot API", version="1.0.0")
@@ -16,10 +16,11 @@ app.add_middleware(
 
 app.include_router(backlog.router, prefix="/api/backlog", tags=["backlog"])
 app.include_router(sprint.router,  prefix="/api/sprint",  tags=["sprint"])
-app.include_router(forecast.router,prefix="/api/forecast",tags=["forecast"])
+app.include_router(forecast.router, prefix="/api/forecast", tags=["forecast"])
 app.include_router(team.router,    prefix="/api/team",    tags=["team"])
-app.include_router(board.router,        prefix="/api/board",        tags=["board"])
+app.include_router(board.router,   prefix="/api/board",        tags=["board"])
 app.include_router(integrations.router, prefix="/api/integrations", tags=["integrations"])
+app.include_router(scenarios.router, prefix="/api/scenarios", tags=["scenarios"])
 
 
 @app.get("/api/health")

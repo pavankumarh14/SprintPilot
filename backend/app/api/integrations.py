@@ -1,11 +1,13 @@
 """
 SprintPilot — Integration Status & Sync Endpoints
 ===================================================
+Implemented ✅
+
 GET  /api/integrations/status      — which integrations are configured
 POST /api/integrations/config      — save integration config for this session
-POST /api/integrations/jira/sync   — pull tickets + sprint history from Jira (TODO stub)
-POST /api/integrations/github/sync — pull issues from GitHub (TODO stub)
-POST /api/integrations/slack/test  — send a test Slack message (TODO stub)
+POST /api/integrations/jira/sync   — pull tickets + sprint history from Jira
+POST /api/integrations/github/sync — pull issues from GitHub
+POST /api/integrations/slack/test  — send a test Slack message
 """
 import os
 import logging
@@ -13,7 +15,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
 
-from app.services import jira_client, github_client
+from app.services import jira_client, github_client, notifier
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -120,57 +122,114 @@ def save_integration_config(cfg: IntegrationConfig):
 @router.post("/jira/sync")
 async def sync_jira():
     """
-    TODO — Pull open issues and sprint history from Jira, upsert into seed data.
-
-    Implement jira_client.fetch_issues() and jira_client.fetch_sprint_history()
-    in backend/app/services/jira_client.py, then wire them here:
-
-      tickets = await jira_client.fetch_issues()
-      history = await jira_client.fetch_sprint_history()
-      # merge into BACKLOG_TICKETS and SPRINT_HISTORY from seed_data
-      return {"synced_tickets": len(tickets), "synced_sprints": len(history)}
+    Pull open issues and sprint history from Jira, upsert into seed data.
     """
-    raise NotImplementedError(
-        "Jira sync not implemented — set JIRA_* env vars and implement "
-        "jira_client.fetch_issues() in backend/app/services/jira_client.py"
-    )
+    from app.data.seed_data import BACKLOG_TICKETS, SPRINT_HISTORY
+    
+    # Temporarily update environment for this session
+    for key in _config:
+        os.environ[key] = _config.get(key, "")
+    
+    try:
+        tickets = await jira_client.fetch_issues()
+        history = await jira_client.fetch_sprint_history()
+        
+        # Merge into seed data (in-memory for this session)
+        synced_count = 0
+        for t in tickets:
+            # Check if already exists
+            existing = [bt for bt in BACKLOG_TICKETS if bt["id"] == t["id"]]
+            if not existing:
+                BACKLOG_TICKETS.append(t)
+                synced_count += 1
+        
+        # Merge sprint history
+        sprint_synced = 0
+        for h in history:
+            existing = [sh for sh in SPRINT_HISTORY if sh.get("sprint") == h.get("sprint")]
+            if not existing:
+                SPRINT_HISTORY.append(h)
+                sprint_synced += 1
+        
+        return {
+            "synced_tickets": synced_count,
+            "synced_sprints": sprint_synced,
+            "total_tickets": len(tickets),
+            "total_sprints": len(history),
+        }
+    
+    except Exception as e:
+        logger.exception("Jira sync failed")
+        return {"error": str(e), "synced_tickets": 0, "synced_sprints": 0}
 
 
 @router.post("/github/sync")
 async def sync_github():
     """
-    TODO — Pull open issues from GitHub, upsert into BACKLOG_TICKETS.
-
-    Implement github_client.fetch_issues() in backend/app/services/github_client.py,
-    then wire it here:
-
-      issues = await github_client.fetch_issues()
-      # merge into BACKLOG_TICKETS from seed_data
-      return {"synced": len(issues)}
+    Pull open issues from GitHub, upsert into BACKLOG_TICKETS.
     """
-    raise NotImplementedError(
-        "GitHub sync not implemented — set GITHUB_* env vars and implement "
-        "github_client.fetch_issues() in backend/app/services/github_client.py"
-    )
+    from app.data.seed_data import BACKLOG_TICKETS
+    
+    # Temporarily update environment for this session
+    for key in _config:
+        os.environ[key] = _config.get(key, "")
+    
+    try:
+        issues = await github_client.fetch_issues()
+        
+        # Merge into seed data (in-memory for this session)
+        synced_count = 0
+        for i in issues:
+            # Check if already exists
+            existing = [bt for bt in BACKLOG_TICKETS if bt["id"] == i["id"]]
+            if not existing:
+                BACKLOG_TICKETS.append(i)
+                synced_count += 1
+        
+        return {
+            "synced": synced_count,
+            "total": len(issues),
+        }
+    
+    except Exception as e:
+        logger.exception("GitHub sync failed")
+        return {"error": str(e), "synced": 0, "total": 0}
 
 
 @router.post("/slack/test")
 async def test_slack():
     """
-    TODO — Send a test message to the configured Slack channel.
-
-    Implement notifier.build_slack_blocks() and notifier.send_slack_alert()
-    in backend/app/services/notifier.py, then wire here:
-
-      from app.services.notifier import build_slack_blocks
-      import httpx, os
-      payload = {"blocks": [{"type": "section", "text": {"type": "mrkdwn",
-                  "text": "*SprintPilot* connected ✅"}}]}
-      async with httpx.AsyncClient() as client:
-          resp = await client.post(os.getenv("SLACK_WEBHOOK_URL"), json=payload)
-      return {"ok": resp.status_code == 200}
+    Send a test message to the configured Slack channel.
     """
-    raise NotImplementedError(
-        "Slack test not implemented — set SLACK_WEBHOOK_URL and implement "
-        "notifier.send_slack_alert() in backend/app/services/notifier.py"
-    )
+    # Temporarily update environment for this session
+    for key in _config:
+        os.environ[key] = _config.get(key, "")
+    
+    import httpx
+    
+    webhook_url = os.getenv("SLACK_WEBHOOK_URL") or _config.get("SLACK_WEBHOOK_URL")
+    
+    if not webhook_url:
+        return {"ok": False, "error": "SLACK_WEBHOOK_URL not configured"}
+    
+    try:
+        payload = {
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*SprintPilot* connected ✅\n\nThis is a test message from your SprintPilot integration."
+                    }
+                }
+            ]
+        }
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(webhook_url, json=payload)
+        
+        return {"ok": resp.status_code == 200, "status_code": resp.status_code}
+    
+    except Exception as e:
+        logger.exception("Slack test failed")
+        return {"ok": False, "error": str(e)}

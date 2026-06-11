@@ -1,31 +1,7 @@
 """
 SprintPilot — Implicit Dependency Detector
 ===========================================
-TASK  ★★★
-
-Replace the hardcoded DEPENDENCY_EDGES with LLM-inferred edges so the app
-detects implicit blocking relationships developers forgot to link in the tracker.
-
-Problem
--------
-Developers miss dependencies constantly. TKT-103 (rate-limiting) blocking TKT-108
-(Jira integration) was implicit — neither ticket linked the other. An LLM that reads
-both descriptions can infer the relationship and insert it into the DAG automatically.
-
-Algorithm
----------
-1. For every ordered pair (A, B) in the backlog, ask the LLM:
-     "Does ticket A block ticket B?"
-2. Merge LLM-inferred edges with existing explicit tracker links.
-3. Remove any edge that would create a cycle in the DAG.
-4. Return the merged edge list.
-
-API reference
--------------
-- app.services.llm.call_llm(system, user, api_key)  →  (text, is_real)
-  call_llm returns ("", False) when no key is set — use this to short-circuit.
-
-Concurrency note: use asyncio.Semaphore to limit to MAX_CONCURRENT LLM calls.
+Implemented ✅
 """
 import asyncio
 import json
@@ -35,7 +11,7 @@ from typing import Optional
 from app.services.llm import call_llm
 
 logger = logging.getLogger(__name__)
-MAX_CONCURRENT = 5   # max parallel LLM calls to avoid rate-limiting
+MAX_CONCURRENT = 5
 
 CLASSIFY_SYSTEM = """You are a software dependency analyser.
 Given two Jira-style tickets A and B, decide whether A BLOCKS B.
@@ -49,56 +25,32 @@ Respond with ONLY valid JSON — no markdown, no extra keys:
 }"""
 
 
-# ---------------------------------------------------------------------------
-# TODO 1 — has_path()
-# ---------------------------------------------------------------------------
-# Depth-first reachability check used for cycle detection.
-#
-# Parameters:
-#   adj   : dict[str, list[str]]  — adjacency list of the current DAG
-#   start : str
-#   goal  : str
-#
-# Steps:
-#   a. Standard iterative DFS using a stack and a visited set.
-#   b. Return True if goal is reachable from start, False otherwise.
-#
-# Acceptance: O(V + E), no recursion depth issues for up to 200 tickets.
-
 def has_path(adj: dict, start: str, goal: str) -> bool:
-    # TODO 1 — implement this function
-    raise NotImplementedError("has_path not implemented")
+    """
+    Depth-first reachability check used for cycle detection.
+    """
+    if start == goal:
+        return True
+    if start not in adj or not adj[start]:
+        return False
+    
+    visited = set()
+    stack = [start]
+    
+    while stack:
+        node = stack.pop()
+        if node == goal:
+            return True
+        if node in visited:
+            continue
+        visited.add(node)
+        if node in adj:
+            for neighbor in adj[node]:
+                if neighbor not in visited:
+                    stack.append(neighbor)
+    
+    return False
 
-
-# ---------------------------------------------------------------------------
-# TODO 2 — classify_pair()
-# ---------------------------------------------------------------------------
-# Ask the LLM whether ticket_a blocks ticket_b.
-#
-# Parameters:
-#   ticket_a, ticket_b     : dict   — each has id, title, description, labels
-#   api_key                : str | None
-#   confidence_threshold   : float  — only emit edge if confidence >= this (default 0.7)
-#
-# Steps:
-#   a. Build user message:
-#        "Ticket A: {id} — {title}\nDescription: {description}\n\n
-#         Ticket B: {id} — {title}\nDescription: {description}\n\n
-#         Does A block B?"
-#   b. Call:  raw, is_real = await call_llm(CLASSIFY_SYSTEM, user_msg, api_key=api_key)
-#      If not is_real, return None immediately.
-#   c. Strip markdown fences and parse JSON.
-#   d. If parsed["blocks"] is True and parsed["confidence"] >= confidence_threshold:
-#        return {
-#          "from": ticket_a["id"],
-#          "to":   ticket_b["id"],
-#          "reason": parsed["reason"],
-#          "source": "llm",
-#        }
-#   e. Otherwise return None.
-#   f. On any exception (JSON parse, key error, …): log the error, return None.
-#
-# Acceptance: never raises; returns None on every error path.
 
 async def classify_pair(
     ticket_a: dict,
@@ -106,45 +58,122 @@ async def classify_pair(
     api_key: Optional[str] = None,
     confidence_threshold: float = 0.7,
 ) -> Optional[dict]:
-    # TODO 2 — implement this function
-    raise NotImplementedError("classify_pair not implemented")
+    """
+    Ask the LLM whether ticket_a blocks ticket_b.
+    """
+    # Build user message
+    user_msg = f"""Ticket A: {ticket_a['id']} — {ticket_a['title']}
+Description: {ticket_a.get('description', 'No description')}
+Labels: {', '.join(ticket_a.get('labels', []))}
 
+Ticket B: {ticket_b['id']} — {ticket_b['title']}
+Description: {ticket_b.get('description', 'No description')}
+Labels: {', '.join(ticket_b.get('labels', []))}
 
-# ---------------------------------------------------------------------------
-# TODO 3 — detect_implicit_dependencies()
-# ---------------------------------------------------------------------------
-# Orchestrate all pair classifications and merge with explicit edges.
-#
-# Parameters:
-#   tickets        : list[dict]  — backlog tickets (id, title, description, labels)
-#   explicit_edges : list[dict]  — from seed_data.DEPENDENCY_EDGES
-#   api_key        : str | None
-#
-# Steps:
-#   a. If api_key is None, return explicit_edges unchanged (mock fallback).
-#   b. Build a set of already-known (from, to) pairs from explicit_edges.
-#   c. Build an adjacency list from explicit_edges for cycle detection.
-#   d. Create a semaphore: sem = asyncio.Semaphore(MAX_CONCURRENT)
-#   e. For every ordered pair (a, b) where a["id"] != b["id"] and
-#      (a["id"], b["id"]) is NOT already in the known-pairs set:
-#        async with sem:
-#            edge = await classify_pair(a, b, api_key=api_key)
-#   f. Collect non-None edges. For each candidate edge:
-#        - Check: would adding (edge["from"], edge["to"]) create a cycle?
-#          Use has_path(adj, edge["to"], edge["from"]) to check reverse reachability.
-#        - If no cycle: add to adj and to the result list.
-#        - If cycle: log and discard.
-#   g. Return explicit_edges + accepted inferred edges.
-#
-# Acceptance:
-#   - Result DAG has no cycles.
-#   - Falls back to explicit_edges when api_key is None.
-#   - Total concurrent LLM calls at any time ≤ MAX_CONCURRENT.
+Does A block B?"""
+    
+    try:
+        raw, is_real = await call_llm(CLASSIFY_SYSTEM, user_msg, api_key=api_key)
+        
+        if not is_real:
+            return None
+        
+        # Strip markdown fences and parse JSON
+        cleaned = raw.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        cleaned = cleaned.rstrip("```").strip()
+        
+        parsed = json.loads(cleaned)
+        
+        if parsed.get("blocks") is True and parsed.get("confidence", 0.0) >= confidence_threshold:
+            return {
+                "from": ticket_a["id"],
+                "to": ticket_b["id"],
+                "reason": parsed["reason"],
+                "source": "llm",
+            }
+        
+        return None
+    
+    except (json.JSONDecodeError, KeyError) as e:
+        logger.warning(f"Failed to parse LLM response: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Error in classify_pair: {e}")
+        return None
+
 
 async def detect_implicit_dependencies(
     tickets: list,
     explicit_edges: list,
     api_key: Optional[str] = None,
 ) -> list:
-    # TODO 3 — implement this function
-    raise NotImplementedError("detect_implicit_dependencies not implemented")
+    """
+    Orchestrate all pair classifications and merge with explicit edges.
+    """
+    # If no API key, return explicit edges unchanged (mock fallback)
+    if not api_key:
+        return explicit_edges
+    
+    # Build set of already-known (from, to) pairs from explicit edges
+    known_pairs = {(e["from"], e["to"]) for e in explicit_edges}
+    
+    # Build adjacency list from explicit edges for cycle detection
+    adj = {}
+    for e in explicit_edges:
+        if e["from"] not in adj:
+            adj[e["from"]] = []
+        adj[e["from"]].append(e["to"])
+    
+    # Create semaphore for concurrency control
+    sem = asyncio.Semaphore(MAX_CONCURRENT)
+    
+    # Collect all candidate pairs (all ordered pairs not already known)
+    async def check_pair(a, b):
+        if a["id"] == b["id"]:
+            return None
+        if (a["id"], b["id"]) in known_pairs:
+            return None
+        
+        async with sem:
+            return await classify_pair(a, b, api_key=api_key)
+    
+    # Create all tasks
+    tasks = []
+    for a in tickets:
+        for b in tickets:
+            tasks.append(check_pair(a, b))
+    
+    # Run all tasks concurrently (limited by semaphore)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Collect and validate non-None edges
+    inferred_edges = []
+    for result in results:
+        if isinstance(result, Exception):
+            logger.warning(f"Task failed: {result}")
+            continue
+        
+        if result is None:
+            continue
+        
+        # Check if adding this edge would create a cycle
+        from_id = result["from"]
+        to_id = result["to"]
+        
+        # Check if to_id can reach from_id (adding edge would create cycle)
+        if has_path(adj, to_id, from_id):
+            logger.info(f"Discarding {from_id} → {to_id}: would create cycle")
+            continue
+        
+        # Add edge to adjacency list result
+        if from_id not in adj:
+            adj[from_id] = []
+        adj[from_id].append(to_id)
+        inferred_edges.append(result)
+    
+    # Return explicit + inferred edges
+    return explicit_edges + inferred_edges
