@@ -56,31 +56,48 @@ Ten service stubs are left intentionally incomplete for contributors to implemen
 | Case-insensitive IDs | `tkt-101` normalised to `TKT-101` before lookup |
 | React dev server | Hot-reload frontend proxied to backend on port 8000 |
 
-### 🔶 Stubs / Partially built — needs completion
+### ✅ Backend Implementation — All Complete
 
-| # | Feature | What's missing | File |
-|---|---------|---------------|------|
-| 1 | Monte-Carlo simulation engine | `build_velocity_distribution()`, `project_remaining_points()`, `run_simulation()` all raise `NotImplementedError` | `backend/app/services/monte_carlo.py` |
-| 2 | LLM dependency detector | `has_path()`, `classify_pair()`, `detect_implicit_dependencies()` all raise `NotImplementedError` | `backend/app/services/dependency_detector.py` |
-| 3 | Capacity bin-packing scheduler | `topological_sort()`, `role_score()`, `assign_to_member()`, `build_sprint_plan()` all raise `NotImplementedError` | `backend/app/services/capacity_planner.py` |
-| 4 | Slack / email alerts | `build_slack_blocks()`, `send_slack_alert()`, `markdown_to_html()`, `send_email_digest()` all raise `NotImplementedError` | `backend/app/services/notifier.py` |
-| 5 | Real LLM estimation + digest | `estimate_ticket()` and `generate_digest()` LLM branches raise `NotImplementedError` when a key is provided | `backend/app/services/llm.py` |
-| 6 | Live slippage forecast | `/api/forecast/slippage` returns static seed data — `run_simulation()` not yet wired | `backend/app/api/forecast.py` |
-| 7 | Jira Cloud integration | `fetch_issues()` and `fetch_sprint_history()` raise `NotImplementedError` | `backend/app/services/jira_client.py` |
-| 8 | GitHub Issues integration | `fetch_issues()` raises `NotImplementedError` | `backend/app/services/github_client.py` |
-| 9 | Integration sync endpoints | `sync_jira()`, `sync_github()`, `test_slack()` all raise `NotImplementedError` | `backend/app/api/integrations.py` |
-| 10 | Board column move | `POST /api/board/move` raises `NotImplementedError` — drag-and-drop has no persist path | `backend/app/api/board.py` |
+All 10 backend service stubs have been fully implemented:
 
-### What the app produces today (before stubs are completed)
+| # | Feature | Status | Description |
+|---|---------|--------|-------------|
+| 1 | Monte-Carlo simulation engine | ✅ Complete | 10,000-run simulation, velocity distribution, live projection |
+| 2 | LLM dependency detector | ✅ Complete | Async LLM classifier with cycle-safe DAG detection |
+| 3 | Capacity bin-packing scheduler | ✅ Complete | Kahn's topo sort + greedy assignment |
+| 4 | Slack / email alerts | ✅ Complete | Block Kit alerts + SendGrid email digests |
+| 5 | Real LLM estimation + digest | ✅ Complete | OpenAI/Anthropic API integration |
+| 6 | Live slippage forecast | ✅ Complete | Wired to Monte Carlo (no longer static) |
+| 7 | Jira Cloud integration | ✅ Complete | Full API integration for issues + sprints |
+| 8 | GitHub Issues integration | ✅ Complete | Issues API with PR filtering |
+| 9 | Integration sync endpoints | ✅ Complete | Live sync for Jira/GitHub/Slack |
+| 10 | Board column move | ✅ Complete | Persistent drag-and-drop |
 
-The full API runs end-to-end. You will see real estimates, a dependency graph, a sprint plan, and a slippage forecast. But:
-- **Forecast** is static seed data — no simulations actually run
-- **Dependency edges** are hardcoded — no LLM classifies ticket pairs
-- **Sprint plan** is hardcoded — no bin-packing scheduler assigns tickets
-- **LLM key** activates a `NotImplementedError` — the mock path is the only safe path
-- **Jira / GitHub sync** buttons show a stub error until the client functions are implemented
+### 🏆 NEW: What-If Scenario Simulator
 
-After completing all stub files the system will run real Monte-Carlo simulations, detect implicit dependencies via LLM, generate dynamic sprint plans from any backlog, pull live tickets from Jira or GitHub, and send Slack/email alerts.
+A revolutionary AI-powered scenario planning API — simulate sprint changes BEFORE committing:
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/scenarios/drop` | Simulate dropping tickets, see probability change |
+| `POST /api/scenarios/capacity` | Model adding overtime/part-time help |
+| `POST /api/scenarios/scope-creep` | Predict impact of mid-sprint additions |
+| `POST /api/scenarios/pto` | Calculate effect of team member PTO |
+| `POST /api/scenarios/optimize` | AI finds optimal ticket set for target probability |
+| `GET /api/scenarios/compare` | Compare all scenarios side-by-side |
+
+The system now runs **real Monte-Carlo simulations**, detects **implicit dependencies via LLM**, generates **dynamic sprint plans**, pulls **live tickets from Jira/GitHub**, and sends **proactive Slack/email alerts**.
+
+### 🔶 Frontend Stubs — Still Pending
+
+The backend is fully functional. These frontend components still need implementation:
+
+| # | Feature | File |
+|---|---------|------|
+| 1 | Forecast charts | `frontend/src/pages/ForecastPage.tsx` |
+| 2 | D3 dependency graph | `frontend/src/pages/DependenciesPage.tsx` |
+| 3 | Board drag-and-drop | `frontend/src/pages/BoardPage.tsx` |
+| 4 | API helpers | `frontend/src/utils/api.ts` |
 
 ---
 
@@ -94,17 +111,21 @@ sprintsense/
 │   │   ├── api/
 │   │   │   ├── backlog.py                        ✅ BUILT — /api/backlog/* (estimates, deps, at-risk)
 │   │   │   ├── sprint.py                         ✅ BUILT — /api/sprint/* (plan, burndown, digest)
-│   │   │   ├── forecast.py                       🔶 PARTIAL — /api/forecast/slippage (static fallback; wire monte_carlo TODO)
+│   │   │   ├── forecast.py                       ✅ COMPLETE — /api/forecast/slippage (live Monte Carlo)
 │   │   │   ├── team.py                           ✅ BUILT — /api/team/
-│   │   │   └── board.py                          ✅ BUILT — /api/board/ (live column status)
+│   │   │   ├── board.py                          ✅ COMPLETE — /api/board/ (persistent drag-and-drop)
+│   │   │   ├── integrations.py                   ✅ COMPLETE — Jira/GitHub/Slack sync
+│   │   │   └── scenarios.py                      🏆 NEW — What-If simulator API
 │   │   ├── data/
 │   │   │   └── seed_data.py                      ✅ BUILT — all 13 seed datasets (single source of truth)
 │   │   └── services/
-│   │       ├── llm.py                            🔶 PARTIAL — mock path works; LLM call paths raise NotImplementedError
-│   │       ├── monte_carlo.py                    🔶 STUB — 3 functions to implement (velocity dist, projection, simulation)
-│   │       ├── dependency_detector.py            🔶 STUB — 3 functions to implement (path check, pair classify, full detect)
-│   │       ├── capacity_planner.py               🔶 STUB — 4 functions to implement (topo sort, role score, assign, build plan)
-│   │       └── notifier.py                       🔶 STUB — 4 functions to implement (Slack blocks, Slack POST, HTML convert, SendGrid)
+│   │       ├── llm.py                            ✅ COMPLETE — OpenAI/Anthropic estimation + digests
+│   │       ├── monte_carlo.py                    ✅ COMPLETE — 10K simulation engine
+│   │       ├── dependency_detector.py            ✅ COMPLETE — LLM classifier with cycle detection
+│   │       ├── capacity_planner.py               ✅ COMPLETE — Topo sort + bin-packing scheduler
+│   │       ├── notifier.py                       ✅ COMPLETE — Slack/Webhook + SendGrid email
+│   │       ├── jira_client.py                    ✅ COMPLETE — Jira Cloud API integration
+│   │       └── github_client.py                  ✅ COMPLETE — GitHub Issues API integration
 │   ├── requirements.txt                          ✅ BUILT
 │   └── .env.example                              ✅ BUILT — copy to .env
 ├── frontend/                                     ← React 18 + TypeScript
@@ -188,7 +209,22 @@ REACT_APP_API_URL=http://localhost:8000 npm start
 ### Activating the real LLM path
 1. Open **Settings** in the sidebar
 2. Paste an `sk-...` (OpenAI) or `sk-ant-...` (Anthropic) key — validated live
-3. Navigate to **Backlog** — estimates will now call the LLM (requires `estimate_ticket()` stub to be implemented)
+3. Navigate to **Backlog** — estimates now call the LLM with similar-ticket context
+4. Check **Dashboard** — standup digest is now AI-generated from live sprint data
+
+### Try the What-If Simulator (NEW 🏆)
+1. Start the backend: `uvicorn app.main:app --reload`
+2. Test scenarios via API:
+   ```bash
+   # Compare all scenarios
+   curl http://localhost:8000/api/scenarios/compare
+   
+   # Optimize sprint for 80% probability
+   curl -X POST "http://localhost:8000/api/scenarios/optimize?target_probability=0.8"
+   
+   # Simulate dropping risky tickets
+   curl -X POST "http://localhost:8000/api/scenarios/drop?ticket_ids=TKT-109"
+   ```
 
 ---
 
@@ -226,6 +262,18 @@ The LLM key can also be provided **per-request** via the `X-LLM-Key` HTTP header
 | `GET` | `/api/forecast/velocity` | Avg / min / max / last velocity stats |
 | `GET` | `/api/team/` | Team members with roles and capacity hours |
 | `GET` | `/api/board/` | Kanban board — tickets in 4 columns with live status |
+| `POST` | `/api/board/move` | Move ticket to different column |
+| `GET` | `/api/integrations/status` | Integration configuration status |
+| `POST` | `/api/integrations/config` | Save integration credentials |
+| `POST` | `/api/integrations/jira/sync` | Sync tickets from Jira Cloud |
+| `POST` | `/api/integrations/github/sync` | Sync issues from GitHub |
+| `POST` | `/api/integrations/slack/test` | Send test Slack message |
+| `GET` | `/api/scenarios/compare` | Compare all scenarios side-by-side |
+| `POST` | `/api/scenarios/drop` | Simulate dropping tickets |
+| `POST` | `/api/scenarios/capacity` | Simulate adding capacity |
+| `POST` | `/api/scenarios/scope-creep` | Simulate adding tickets mid-sprint |
+| `POST` | `/api/scenarios/pto` | Simulate team member PTO |
+| `POST` | `/api/scenarios/optimize` | AI-optimize sprint for target probability |
 
 Full interactive API docs at `/docs` (Swagger UI) or `/redoc`.
 
@@ -251,13 +299,13 @@ Full interactive API docs at `/docs` (Swagger UI) or `/redoc`.
                     ▼
   ┌──────────────────────────────────────────┐
   │  3. Dependency Detection                 │  ← does ticket A implicitly block ticket B?
-  │     LLM classifies all ordered pairs     │    mock: hardcoded edges / real: TODO stub
+  │     LLM classifies all ordered pairs     │    cycle-free DAG with async inference
   └─────────────────┬────────────────────────┘
                     │
                     ▼
   ┌──────────────────────────────────────────┐
   │  4. Capacity-Aware Sprint Planning       │  ← which tickets fit? who gets what?
-  │     topological sort → bin-packing       │    mock: hardcoded plan / real: TODO stub
+  │     topological sort → bin-packing       │    dynamic capacity-aware assignment
   └─────────────────┬────────────────────────┘
                     │
                     ▼
@@ -269,14 +317,14 @@ Full interactive API docs at `/docs` (Swagger UI) or `/redoc`.
                     ▼
   ┌──────────────────────────────────────────┐
   │  6. Monte-Carlo Slippage Forecast        │  ← will we finish? what's at risk?
-  │     10 000 simulations over velocity     │    mock: static series / real: TODO stub
+  │     10 000 simulations over velocity     │    live probabilistic forecasting
   │     distribution → daily probabilities   │
   └─────────────────┬────────────────────────┘
-                    │
-                    ▼
+                     │
+                     ▼
   ┌──────────────────────────────────────────┐
   │  7. Alert + Digest                       │  ← notify the team while there's time
-  │     Slack / email when prob < 70%        │    mock: seed digest / real: TODO stub
+  │     Slack / email when prob < 70%        │    proactive alerts via webhooks
   └─────────────────┬────────────────────────┘
                     │
                     ▼
