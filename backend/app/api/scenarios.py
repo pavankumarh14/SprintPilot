@@ -23,8 +23,7 @@ from app.data.seed_data import (
     LLM_ESTIMATES, DEPENDENCY_EDGES, BURNDOWN
 )
 
-router = APIRouter(prefix="/scenarios", tags=["scenarios"])
-
+router = APIRouter(tags=["scenarios"])
 
 # -----------------------------------------------------------------------------
 # Request/Response Models
