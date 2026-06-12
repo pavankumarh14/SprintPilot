@@ -7,6 +7,7 @@ import SprintPlanPage from "./pages/SprintPlanPage";
 import BoardPage from "./pages/BoardPage";
 import ForecastPage from "./pages/ForecastPage";
 import DependenciesPage from "./pages/DependenciesPage";
+import ScenariosPage from "./pages/ScenariosPage";
 import TeamPage from "./pages/TeamPage";
 import SettingsPage from "./pages/SettingsPage";
 import "./index.css";
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="board"         element={<BoardPage />} />
           <Route path="forecast"      element={<ForecastPage />} />
           <Route path="dependencies"  element={<DependenciesPage />} />
+                      <Route path="scenarios"     element={<ScenariosPage />} />
           <Route path="team"          element={<TeamPage />} />
           <Route path="settings"      element={<SettingsPage />} />
         </Route>
