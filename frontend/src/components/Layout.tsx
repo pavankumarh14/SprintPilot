@@ -35,8 +35,7 @@ export default function Layout() {
             <Zap size={16} color="#3d7eff" fill="#3d7eff" />
           </div>
           {!collapsed && (
-            <span style={styles.logoText}>Sprint<span style={{ color: "var(--accent)" }}>Sense</span></span>
-          )}
+                <span style={styles.logoText}>SprintPilot</span>          )}
         </div>
 
         <div style={styles.sidebarDivider} />
