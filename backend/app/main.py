@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Header
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from typing import Optional
