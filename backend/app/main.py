@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from typing import Optional
 from app.api import backlog, sprint, forecast, team, board, integrations, scenarios
 from app.services.llm import has_real_key
@@ -36,3 +38,23 @@ def llm_status(x_llm_key: Optional[str] = Header(default=None)):
     """
     active = has_real_key(x_llm_key)
     return {"llm_active": active, "source": "header" if x_llm_key else ("env" if active else "none")}
+
+
+# Serve React static files
+STATIC_DIR = Path(__file__).parent.parent.parent / "frontend" / "build"
+
+if STATIC_DIR.exists():
+        # Mount static assets (JS, CSS, images)
+        app.mount("/static", StaticFiles(directory=STATIC_DIR / "static"), name="static")
+
+    # Serve index.html for all non-API routes (client-side routing)
+    @app.get("/{full_path:path}")
+    async def serve_react_app(full_path: str):
+                if full_path.startswith("api/"):
+                                return {"error": "Not found"}
+
+        index_file = STATIC_DIR / "index.html"
+        if index_file.exists():
+                        with open(index_file, "r") as f:
+                                            return HTMLResponse(content=f.read())
+                                    return {"error": "Frontend not built"}
