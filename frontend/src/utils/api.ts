@@ -1,5 +1,4 @@
-const BASE = process.env.REACT_APP_API_URL || "http://localhost:8000";
-
+const BASE = process.env.REACT_APP_API_URL || "";
 const LLM_KEY_STORAGE = "sprintsense_llm_key";
 
 export function getLlmKey(): string {
