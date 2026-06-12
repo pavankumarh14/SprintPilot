@@ -47,14 +47,14 @@ if STATIC_DIR.exists():
         # Mount static assets (JS, CSS, images)
         app.mount("/static", StaticFiles(directory=STATIC_DIR / "static"), name="static")
 
-    # Serve index.html for all non-API routes (client-side routing)
-    @app.get("/{full_path:path}")
-    async def serve_react_app(full_path: str):
-                if full_path.startswith("api/"):
-                                return {"error": "Not found"}
-
-        index_file = STATIC_DIR / "index.html"
-        if index_file.exists():
-                        with open(index_file, "r") as f:
-                                            return HTMLResponse(content=f.read())
-                                    return {"error": "Frontend not built"}
+# Serve index.html for all non-API routes (client-side routing)
+@app.get("/{full_path:path}")
+async def serve_react_app(full_path: str):
+    if full_path.startswith("api/"):
+        return {"error": "Not found"}
+    
+    index_file = STATIC_DIR / "index.html"
+    if index_file.exists():
+        with open(index_file, "r") as f:
+            return HTMLResponse(content=f.read())
+    return {"error": "Frontend not built"}
