@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Headerf
-rom fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Header
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from typing import Optional
