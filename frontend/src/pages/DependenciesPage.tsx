@@ -3,7 +3,6 @@ import { useApi } from "../hooks/useApi";
 import { api } from "../utils/api";
 import * as d3 from "d3";
 
-/* Hardcoded story-point sizes for node radii — r = 14 + pts */
 const TICKET_POINTS: Record<string, number> = {
   "TKT-101": 8, "TKT-102": 3, "TKT-103": 5, "TKT-104": 5,
   "TKT-105": 8, "TKT-106": 8, "TKT-107": 13, "TKT-108": 8,
@@ -31,16 +30,14 @@ export default function DependenciesPage() {
     const tickets = backlog.tickets ?? [];
     const boardState = board;
 
-    /* Derive a status for every node from the live board state */
     const statusMap: Record<string, string> = {};
     if (boardState) {
-      ["todo","in_progress","review","done"].forEach((col: string) => {
+      ["todo", "in_progress", "review", "done"].forEach((col: string) => {
         (boardState[col] ?? []).forEach((t: any) => { statusMap[t.id] = col; });
       });
     }
     tickets.forEach((t: any) => { if (!statusMap[t.id]) statusMap[t.id] = "backlog"; });
 
-    /* Build node and link arrays for D3 */
     const nodeIds = Array.from(new Set([...edges.map(e => e.from), ...edges.map(e => e.to)]));
     const nodes = nodeIds.map(id => {
       const t = tickets.find((tk: any) => tk.id === id);
@@ -55,72 +52,95 @@ export default function DependenciesPage() {
     const H = 480;
     svg.attr("viewBox", `0 0 ${W} ${H}`);
 
-    /* -------------------------------------------------------------------------
-     * TODO — implement the D3 force-directed graph
-     * -------------------------------------------------------------------------
-     * All data is prepared above: nodes[], links[], W, H, svg selection.
-     *
-     * Steps:
-     *
-     * 1. Arrow marker — append to <defs>:
-     *      svg.append("defs").append("marker")
-     *        .attr("id", "arrow")
-     *        .attr("viewBox", "0 -5 10 10")
-     *        .attr("refX", 28).attr("refY", 0)
-     *        .attr("markerWidth", 6).attr("markerHeight", 6)
-     *        .attr("orient", "auto")
-     *        .append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", "#3d7eff")
-     *
-     * 2. Force simulation:
-     *      const sim = d3.forceSimulation(nodes as any)
-     *        .force("link",      d3.forceLink(links).id((d:any)=>d.id).distance(120))
-     *        .force("charge",    d3.forceManyBody().strength(-350))
-     *        .force("center",    d3.forceCenter(W/2, H/2))
-     *        .force("collision", d3.forceCollide(50))
-     *
-     * 3. Link lines:
-     *      const link = svg.append("g").selectAll("line").data(links).join("line")
-     *        .attr("stroke", "#3d7eff").attr("stroke-opacity", 0.55)
-     *        .attr("stroke-width", 1.5).attr("marker-end", "url(#arrow)")
-     *
-     * 4. Link labels (edge reason text, truncated to 28 chars + "…"):
-     *      const linkLabel = svg.append("g").selectAll("text").data(links).join("text")
-     *        .attr("font-size", 9).attr("fill", "#4a5468")
-     *        .attr("font-family", "Space Mono, monospace")
-     *        .text((d:any) => d.reason.substring(0, 28) + "…")
-     *
-     * 5. Node groups with drag behaviour:
-     *      const node = svg.append("g").selectAll("g").data(nodes).join("g")
-     *        .attr("cursor", "pointer")
-     *        .call(d3.drag<any,any>()
-     *          .on("start", (event, d:any) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
-     *          .on("drag",  (event, d:any) => { d.fx=event.x; d.fy=event.y; })
-     *          .on("end",   (event, d:any) => { if (!event.active) sim.alphaTarget(0); d.fx=null; d.fy=null; })
-     *        )
-     *
-     * 6. For each node, append:
-     *      a) circle: r = 14 + d.pts, fill = STATUS_COLOR[d.status] at 18% opacity,
-     *                 stroke = STATUS_COLOR[d.status], strokeWidth = 2
-     *      b) text (ticket ID): dy="-4px", fontSize=10, fontWeight=700, fill="#3d7eff"
-     *      c) text (points):    dy="12px", fontSize=9,  fill="#8b95a8", text="${d.pts}p"
-     *
-     * 7. Tooltip — append a fixed-position <div> to document.body.
-     *      On node mouseover: fade in, set innerHTML with id/title/status.
-     *      On mousemove: update left/top to follow cursor.
-     *      On mouseout: fade out.
-     *
-     * 8. Tick handler:
-     *      sim.on("tick", () => {
-     *        link.attr("x1",(d:any)=>d.source.x).attr("y1",(d:any)=>d.source.y)
-     *            .attr("x2",(d:any)=>d.target.x).attr("y2",(d:any)=>d.target.y)
-     *        linkLabel.attr("x",(d:any)=>(d.source.x+d.target.x)/2)
-     *                 .attr("y",(d:any)=>(d.source.y+d.target.y)/2)
-     *        node.attr("transform",(d:any)=>`translate(${d.x},${d.y})`)
-     *      })
-     *
-     * 9. Cleanup: return () => { tooltip.remove(); sim.stop(); }
-     * ------------------------------------------------------------------------- */
+    // 1. Arrow marker
+    svg.append("defs").append("marker")
+      .attr("id", "arrow")
+      .attr("viewBox", "0 -5 10 10")
+      .attr("refX", 28).attr("refY", 0)
+      .attr("markerWidth", 6).attr("markerHeight", 6)
+      .attr("orient", "auto")
+      .append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", "#3d7eff");
 
+    // 2. Force simulation
+    const sim = d3.forceSimulation(nodes as any)
+      .force("link", d3.forceLink(links).id((d: any) => d.id).distance(120))
+      .force("charge", d3.forceManyBody().strength(-350))
+      .force("center", d3.forceCenter(W / 2, H / 2))
+      .force("collision", d3.forceCollide(50));
+
+    // 3. Link lines
+    const link = svg.append("g").selectAll("line").data(links).join("line")
+      .attr("stroke", "#3d7eff").attr("stroke-opacity", 0.55)
+      .attr("stroke-width", 1.5).attr("marker-end", "url(#arrow)");
+
+    // 4. Link labels
+    const linkLabel = svg.append("g").selectAll("text").data(links).join("text")
+      .attr("font-size", 9).attr("fill", "#4a5468")
+      .attr("font-family", "Space Mono, monospace")
+      .text((d: any) => (d.reason ?? "").substring(0, 28) + (d.reason?.length > 28 ? "\u2026" : ""));
+
+    // 5. Tooltip
+    const tooltip = d3.select("body").append("div")
+      .style("position", "fixed")
+      .style("background", "#1a1f2e")
+      .style("border", "1px solid #2a3147")
+      .style("border-radius", "8px")
+      .style("padding", "8px 12px")
+      .style("font-size", "12px")
+      .style("color", "#e2e8f0")
+      .style("pointer-events", "none")
+      .style("opacity", 0)
+      .style("z-index", 9999);
+
+    // 6. Node groups with drag
+    const node = svg.append("g").selectAll("g").data(nodes).join("g")
+      .attr("cursor", "pointer")
+      .call((d3.drag() as any)
+        .on("start", (event: any, d: any) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on("drag",  (event: any, d: any) => { d.fx = event.x; d.fy = event.y; })
+        .on("end",   (event: any, d: any) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+      );
+
+    node.append("circle")
+      .attr("r", (d: any) => 14 + d.pts)
+      .attr("fill", (d: any) => STATUS_COLOR[d.status] + "2e")
+      .attr("stroke", (d: any) => STATUS_COLOR[d.status])
+      .attr("stroke-width", 2);
+
+    node.append("text")
+      .attr("dy", "-4px")
+      .attr("font-size", 10).attr("font-weight", 700)
+      .attr("fill", "#3d7eff").attr("text-anchor", "middle")
+      .text((d: any) => d.label);
+
+    node.append("text")
+      .attr("dy", "12px")
+      .attr("font-size", 9).attr("fill", "#8b95a8").attr("text-anchor", "middle")
+      .text((d: any) => `${d.pts}p`);
+
+    node
+      .on("mouseover", (event: any, d: any) => {
+        tooltip.style("opacity", 1)
+          .html(`<strong style="color:#3d7eff">${d.id}</strong><br/>${d.title}<br/><span style="color:#8b95a8">${d.status}</span>`);
+      })
+      .on("mousemove", (event: any) => {
+        tooltip.style("left", (event.clientX + 14) + "px").style("top", (event.clientY - 28) + "px");
+      })
+      .on("mouseout", () => { tooltip.style("opacity", 0); });
+
+    // 8. Tick handler
+    sim.on("tick", () => {
+      link
+        .attr("x1", (d: any) => d.source.x).attr("y1", (d: any) => d.source.y)
+        .attr("x2", (d: any) => d.target.x).attr("y2", (d: any) => d.target.y);
+      linkLabel
+        .attr("x", (d: any) => (d.source.x + d.target.x) / 2)
+        .attr("y", (d: any) => (d.source.y + d.target.y) / 2);
+      node.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
+    });
+
+    // 9. Cleanup
+    return () => { tooltip.remove(); sim.stop(); };
   }, [deps, backlog, board]);
 
   return (
@@ -129,7 +149,7 @@ export default function DependenciesPage() {
         <div>
           <h1 style={styles.title}>Dependency Graph</h1>
           <p style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-            LLM-inferred implicit + explicit ticket dependencies · drag nodes to rearrange
+            LLM-inferred implicit + explicit ticket dependencies &middot; drag nodes to rearrange
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -140,28 +160,27 @@ export default function DependenciesPage() {
             { color: "#4a5468", label: "Not started" },
           ].map(l => (
             <div key={l.label} style={styles.legendItem}>
-              <div style={{ width:10, height:10, borderRadius:"50%", background:l.color }} />
-              <span style={{ fontSize:12, color:"var(--text-secondary)" }}>{l.label}</span>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: l.color }} />
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{l.label}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* SVG canvas — D3 renders into this element */}
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 12 }}>
+        <div style={styles.cardTitle}>Ticket Dependency Map</div>
         <svg ref={svgRef} style={{ width: "100%", height: 480, display: "block" }} />
       </div>
 
-      {/* Dependency edge list (always rendered — no implementation needed) */}
-      <div className="card" style={{ marginTop: 14 }}>
+      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
         <div style={styles.cardTitle}>Dependency Edges</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
           {(deps?.edges ?? []).map((e: any, i: number) => (
             <div key={i} style={styles.edgeRow}>
-              <span style={{ fontFamily:"var(--font-mono)", fontSize:12, color:"var(--accent)" }}>{e.from}</span>
-              <span style={{ color:"var(--text-muted)", fontSize:12 }}>→ blocks →</span>
-              <span style={{ fontFamily:"var(--font-mono)", fontSize:12, color:"var(--purple)" }}>{e.to}</span>
-              <span style={{ flex:1, fontSize:12, color:"var(--text-secondary)", textAlign:"right" }}>{e.reason}</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#3d7eff" }}>{e.from}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>&nbsp;&rarr; blocks &rarr;&nbsp;</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#a78bfa" }}>{e.to}</span>
+              <span style={{ fontSize: 11, color: "var(--text-secondary)", marginLeft: "auto" }}>{e.reason}</span>
             </div>
           ))}
         </div>
@@ -171,9 +190,9 @@ export default function DependenciesPage() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  header:   { display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 },
-  title:    { fontSize:22, fontWeight:700, letterSpacing:"-0.02em" },
-  cardTitle: { fontSize:12, fontWeight:600, color:"var(--text-muted)", textTransform:"uppercase" as const, letterSpacing:"0.06em", fontFamily:"var(--font-mono)" },
-  legendItem: { display:"flex", alignItems:"center", gap:6, padding:"6px 10px", background:"var(--bg-surface)", border:"1px solid var(--border)", borderRadius:6 },
-  edgeRow: { display:"flex", alignItems:"center", gap:12, padding:"8px 12px", background:"var(--bg-elevated)", border:"1px solid var(--border)", borderRadius:6 },
+  header:     { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
+  title:      { fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" },
+  cardTitle:  { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" as const, letterSpacing: "0.06em", fontFamily: "var(--font-mono)", marginBottom: 8 },
+  legendItem: { display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 6 },
+  edgeRow:    { display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 6 },
 };
