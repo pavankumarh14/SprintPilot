@@ -2,20 +2,14 @@
 
 :root {
   /* Core palette */
-  --bg-base:       #0a0c10;
-  --bg-surface:    #0f1218;
-  --bg-elevated:   #161b24;
-  --bg-overlay:    #1d2433;
-  --border:        #252d3d;
-  --border-subtle: #1a2030;
-
+  --bg-base:        #ffffff;  --bg-surface:    #0f1218;
+  --bg-surface:     #f8f9fa;
+  --border:         #dee2e6;
   /* Text */
-  --text-primary:  #e8edf5;
-  --text-secondary:#8b95a8;
-  --text-muted:    #4a5468;
-  --text-inverse:  #0a0c10;
-
-  /* Accent */
+  --text-primary:   #212529;
+  --text-secondary: #6c757d;
+    --text-muted:     #adb5bd;
+  --text-inverse:   #ffffff;  /* Accent */
   --accent:        #3d7eff;
   --accent-glow:   rgba(61, 126, 255, 0.2);
   --accent-dim:    #1a3a7a;
