@@ -93,12 +93,12 @@ export default function ScenariosPage() {
           <span>Add 1 Ticket (Creep)</span>
         </button>
         <button
-          onClick={() => runScenario("pto", { memberId: "sarah", days: 3 })}
+          onClick={() => runScenario("pto", { memberId: "USR-3", days: 3 })}
           disabled={loading}
           style={{ ...btnStyles, background: "var(--bg-surface)", border: "1px solid var(--border)", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.5 : 1 }}
         >
           <TrendingDown size={16} color="var(--amber)" />
-          <span>Sarah Out 3 Days</span>
+          <span>Meera Out 3 Days</span>
         </button>
         <button
           onClick={() => runScenario("optimize", { targetProbability: 0.8 })}
