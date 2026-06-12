@@ -70,7 +70,36 @@ def calculate_completion_probability(remaining_points: int, days_left: int,
     Run a quick Monte Carlo simulation for scenarios.
     """
     mean_daily, stdev_daily = build_velocity_distribution(SPRINT_HISTORY, sprint_days)
-    stdev_daily = max(stdev_daily, 0.01)
+    
+    is_invalid_mean = (
+        mean_daily is None 
+        or mean_daily != mean_daily  # NaN check
+        or mean_daily <= 0
+        or mean_daily == float('inf')
+        or mean_daily == float('-inf')
+    )
+    if is_invalid_mean:
+        return 1.0 if remaining_points <= 0 else 0.0
+    
+    is_invalid_stdev = (
+        stdev_daily is None
+        or (stdev_daily != stdev_daily)
+        or stdev_daily <= 0
+        or stdev_daily == float('inf')
+    )
+    stdev_daily = max(stdev_daily if not is_invalid_stdev else 0.01, 0.01)
+    
+    if not isinstance(remaining_points, (int, float)) or remaining_points < 0:
+        remaining_points = 0
+    if not isinstance(days_left, (int, float)) or days_left < 0:
+        days_left = 0
+    remaining_points = max(0, int(remaining_points))
+    days_left = max(0, int(days_left))
+    
+    if remaining_points <= 0:
+        return 1.0
+    if days_left <= 0:
+        return 0.0
     
     finish_count = 0
     for _ in range(n_simulations):
@@ -83,6 +112,36 @@ def calculate_completion_probability(remaining_points: int, days_left: int,
                 break
     
     return finish_count / n_simulations
+
+
+def _safe_prob(value: float) -> float:
+    if value is None or not isinstance(value, (int, float)):
+        return 0.0
+    if value != value:  # NaN
+        return 0.0
+    if value == float('inf') or value == float('-inf'):
+        return 0.0
+    return max(0.0, min(1.0, round(float(value), 4)))
+
+
+def _risk_level(prob: float) -> str:
+    if prob >= 0.8:
+        return "low"
+    elif prob >= 0.5:
+        return "medium"
+    else:
+        return "high"
+
+
+def _safe_scenario(name: str, prob: float, points: int, recommendation: str) -> dict:
+    safe_prob = _safe_prob(prob)
+    return {
+        "name": name,
+        "probability": safe_prob,
+        "points": max(0, int(points)),
+        "recommendation": recommendation or "",
+        "risk": _risk_level(safe_prob),
+    }
 
 
 def get_current_sprint_state():
@@ -426,10 +485,14 @@ def compare_scenarios():
     base_prob = calculate_completion_probability(remaining_pts, days_left)
     scenarios.append({
         "name": "Baseline (current)",
-        "probability": round(base_prob, 2),
+        "scenario_name": "Baseline (current)",
+        "probability": _safe_prob(base_prob),
+        "completion_probability": _safe_prob(base_prob),
+        "completion_probability_change": 0.0,
         "points": remaining_pts,
         "recommendation": "Current sprint plan",
-        "risk": "high" if base_prob < 0.5 else ("medium" if base_prob < 0.8 else "low"),
+        "risk": _risk_level(base_prob) if _safe_prob(base_prob) == base_prob else _risk_level(_safe_prob(base_prob)),
+        "risk_level": _risk_level(base_prob) if _safe_prob(base_prob) == base_prob else _risk_level(_safe_prob(base_prob)),
     })
     
     # Drop riskiest ticket (assumed to be highest point value)
@@ -440,38 +503,67 @@ def compare_scenarios():
     )
     if riskiest_id:
         drop_result = simulate_drop_tickets(TicketIdsRequest(ticket_ids=[riskiest_id]))
+        drop_prob = _safe_prob(drop_result.completion_probability)
         scenarios.append({
             "name": f"Drop {riskiest_id}",
-            "probability": drop_result.completion_probability,
-            "points": remaining_pts - LLM_ESTIMATES.get(riskiest_id, {}).get("points", 0),
+            "scenario_name": f"Drop {riskiest_id}",
+            "probability": drop_prob,
+            "completion_probability": drop_prob,
+            "completion_probability_change": round(drop_prob - _safe_prob(base_prob), 4),
+            "points": max(0, remaining_pts - LLM_ESTIMATES.get(riskiest_id, {}).get("points", 0)),
             "recommendation": drop_result.recommendation,
-            "risk": drop_result.risk_level,
+            "risk": _risk_level(drop_prob),
+            "risk_level": _risk_level(drop_prob),
         })
     
     # Add capacity
     capacity_result = simulate_add_capacity(CapacityRequest(hours=16))  # 2 extra days
+    cap_prob = _safe_prob(capacity_result.completion_probability)
     scenarios.append({
         "name": "Add 16h capacity",
-        "probability": capacity_result.completion_probability,
+        "scenario_name": "Add 16h capacity",
+        "probability": cap_prob,
+        "completion_probability": cap_prob,
+        "completion_probability_change": round(cap_prob - _safe_prob(base_prob), 4),
         "points": remaining_pts,
         "recommendation": capacity_result.recommendation,
-        "risk": capacity_result.risk_level,
+        "risk": _risk_level(cap_prob),
+        "risk_level": _risk_level(cap_prob),
     })
     
     # Optimized
     optimized = optimize_sprint(OptimizeRequest(target_probability=0.8))
+    opt_prob = _safe_prob(optimized.completion_probability)
     scenarios.append({
         "name": "AI-Optimized Plan",
-        "probability": optimized.completion_probability,
-        "points": sum(
+        "scenario_name": "AI-Optimized Plan",
+        "probability": opt_prob,
+        "completion_probability": opt_prob,
+        "completion_probability_change": round(opt_prob - _safe_prob(base_prob), 4),
+        "points": max(0, sum(
             LLM_ESTIMATES.get(tid, {}).get("points", 0) 
             for tid in optimized.tickets_included
-        ),
+        )),
         "recommendation": optimized.recommendation,
-        "risk": optimized.risk_level,
+        "risk": _risk_level(opt_prob),
+        "risk_level": _risk_level(opt_prob),
     })
     
+    safe_scenarios = [s for s in scenarios]
+    if not safe_scenarios:
+        safe_scenarios = [{
+            "name": "Baseline (fallback)",
+            "scenario_name": "Baseline (fallback)",
+            "probability": 0.5,
+            "completion_probability": 0.5,
+            "completion_probability_change": 0.0,
+            "points": remaining_pts,
+            "recommendation": "Current sprint plan",
+            "risk": "medium",
+            "risk_level": "medium",
+        }]
+    
     return {
-        "scenarios": scenarios,
-        "best_scenario": max(scenarios, key=lambda s: s["probability"])["name"],
+        "scenarios": safe_scenarios,
+        "best_scenario": max(safe_scenarios, key=lambda s: s["probability"])["name"],
     }

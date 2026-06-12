@@ -8,7 +8,8 @@ export default function ScenariosPage() {
     const [loading, setLoading] = useState(false);
   const [selectedScenario, setSelectedScenario] = useState<any>(null);
 
-  const baselineProb = comparison?.baseline?.completion_probability ?? 0.58;
+  const baselineScenario = comparison?.scenarios?.find((sc: any) => sc.name === "Baseline (current)");
+  const baselineProb = baselineScenario?.probability ?? 0.58;
 
   const runScenario = async (type: string, params: Record<string, any>) => {
     setLoading(true);
