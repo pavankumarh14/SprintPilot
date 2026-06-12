@@ -15,7 +15,6 @@ Features:
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-import statistics
 from app.services.monte_carlo import build_velocity_distribution
 from app.services.capacity_planner import build_sprint_plan, HOURS_PER_POINT
 from app.data.seed_data import (
@@ -33,6 +32,21 @@ class ScenarioRequest(BaseModel):
     action: str  # "drop", "add_capacity", "scope_creep", "pto", "optimize"
     parameters: dict
     
+
+class TicketIdsRequest(BaseModel):
+    ticket_ids: List[str]
+
+class CapacityRequest(BaseModel):
+    hours: int = 0
+    member_id: Optional[str] = None
+
+class PtoRequest(BaseModel):
+    member_id: str
+    days: int
+
+class OptimizeRequest(BaseModel):
+    target_probability: float = 0.8
+
 
 class ScenarioResult(BaseModel):
     scenario_name: str
@@ -93,10 +107,11 @@ def get_current_sprint_state():
 # -----------------------------------------------------------------------------
 
 @router.post("/drop", response_model=ScenarioResult)
-def simulate_drop_tickets(ticket_ids: List[str]):
+def simulate_drop_tickets(payload: TicketIdsRequest):
     """
     Simulate what happens if specific tickets are dropped from the sprint.
     """
+    ticket_ids = payload.ticket_ids
     current_day, days_left, remaining_pts = get_current_sprint_state()
     
     # Calculate points in dropped tickets
@@ -154,10 +169,12 @@ def simulate_drop_tickets(ticket_ids: List[str]):
 
 
 @router.post("/capacity", response_model=ScenarioResult)
-def simulate_add_capacity(member_id: Optional[str] = None, hours: int = 0):
+def simulate_add_capacity(payload: CapacityRequest):
     """
     Simulate adding extra capacity (overtime or part-time help).
     """
+    hours = payload.hours
+    member_id = payload.member_id
     current_day, days_left, remaining_pts = get_current_sprint_state()
     
     # Original probability
@@ -202,10 +219,11 @@ def simulate_add_capacity(member_id: Optional[str] = None, hours: int = 0):
 
 
 @router.post("/scope-creep", response_model=ScenarioResult)
-def simulate_scope_creep(ticket_ids: List[str]):
+def simulate_scope_creep(payload: TicketIdsRequest):
     """
     Simulate adding new tickets mid-sprint (scope creep).
     """
+    ticket_ids = payload.ticket_ids
     current_day, days_left, remaining_pts = get_current_sprint_state()
     
     # Calculate points in new tickets
@@ -246,10 +264,12 @@ def simulate_scope_creep(ticket_ids: List[str]):
 
 
 @router.post("/pto", response_model=ScenarioResult)
-def simulate_pto(member_id: str, days_out: int):
+def simulate_pto(payload: PtoRequest):
     """
     Simulate the impact of a team member taking PTO.
     """
+    member_id = payload.member_id
+    days = payload.days
     current_day, days_left, remaining_pts = get_current_sprint_state()
     
     member = next((m for m in TEAM_MEMBERS if m["id"] == member_id), None)
@@ -260,9 +280,9 @@ def simulate_pto(member_id: str, days_out: int):
     total_team_capacity = sum(m.get("capacity_hours", 40) for m in TEAM_MEMBERS)
     member_capacity = member.get("capacity_hours", 40)
     
-    # They'll be out for 'days_out' days, so effective capacity lost
-    # is proportional to days_out / sprint_days
-    capacity_loss_ratio = (member_capacity / total_team_capacity) * (days_out / 10)
+    # They'll be out for 'days' days, so effective capacity lost
+    # is proportional to days / sprint_days
+    capacity_loss_ratio = (member_capacity / total_team_capacity) * (days / 10)
     
     # Adjust remaining points to account for reduced capacity
     adjusted_remaining = remaining_pts / max(0.1, 1 - capacity_loss_ratio)
@@ -276,11 +296,11 @@ def simulate_pto(member_id: str, days_out: int):
     risk_level = "low" if new_prob >= 0.8 else ("medium" if new_prob >= 0.5 else "high")
     
     if new_prob < 0.4:
-        recommendation = f"🚨 CRITICAL: {member['name']} taking {days_out} days PTO severely impacts the sprint ({round(new_prob*100)}% probability). Consider reassigning their work or dropping tickets."
+        recommendation = f"🚨 CRITICAL: {member['name']} taking {days} days PTO severely impacts the sprint ({round(new_prob*100)}% probability). Consider reassigning their work or dropping tickets."
     elif new_prob < original_prob - 0.15:
-        recommendation = f"⚠️ {member['name']} out for {days_out} days hurts the sprint significantly (-{round((original_prob-new_prob)*100)}%). Redistribute work among team."
+        recommendation = f"⚠️ {member['name']} out for {days} days hurts the sprint significantly (-{round((original_prob-new_prob)*100)}%). Redistribute work among team."
     else:
-        recommendation = f"✅ {member['name']} out for {days_out} days is manageable. Sprint completion: {round(new_prob*100)}%. Monitor progress carefully."
+        recommendation = f"✅ {member['name']} out for {days} days is manageable. Sprint completion: {round(new_prob*100)}%. Monitor progress carefully."
     
     # Find tickets assigned to this member that might need reassignment
     from app.data.seed_data import PROPOSED_SPRINT
@@ -290,7 +310,7 @@ def simulate_pto(member_id: str, days_out: int):
     ]
     
     return ScenarioResult(
-        scenario_name=f"{member['name']} PTO ({days_out} days)",
+        scenario_name=f"{member['name']} PTO ({days} days)",
         completion_probability=round(new_prob, 2),
         completion_probability_change=round(new_prob - original_prob, 2),
         days_to_complete=round(days_to_complete, 1),
@@ -303,11 +323,12 @@ def simulate_pto(member_id: str, days_out: int):
 
 
 @router.post("/optimize", response_model=ScenarioResult)
-def optimize_sprint(target_probability: float = 0.8):
+def optimize_sprint(payload: OptimizeRequest):
     """
     AI-optimizes the sprint to hit a target completion probability.
     Suggests which tickets to drop or add.
     """
+    target_probability = payload.target_probability
     current_day, days_left, remaining_pts = get_current_sprint_state()
     
     original_prob = calculate_completion_probability(remaining_pts, days_left)
@@ -418,7 +439,7 @@ def compare_scenarios():
         default=None
     )
     if riskiest_id:
-        drop_result = simulate_drop_tickets([riskiest_id])
+        drop_result = simulate_drop_tickets(TicketIdsRequest(ticket_ids=[riskiest_id]))
         scenarios.append({
             "name": f"Drop {riskiest_id}",
             "probability": drop_result.completion_probability,
@@ -428,7 +449,7 @@ def compare_scenarios():
         })
     
     # Add capacity
-    capacity_result = simulate_add_capacity(hours=16)  # 2 extra days
+    capacity_result = simulate_add_capacity(CapacityRequest(hours=16))  # 2 extra days
     scenarios.append({
         "name": "Add 16h capacity",
         "probability": capacity_result.completion_probability,
@@ -438,7 +459,7 @@ def compare_scenarios():
     })
     
     # Optimized
-    optimized = optimize_sprint(target_probability=0.8)
+    optimized = optimize_sprint(OptimizeRequest(target_probability=0.8))
     scenarios.append({
         "name": "AI-Optimized Plan",
         "probability": optimized.completion_probability,

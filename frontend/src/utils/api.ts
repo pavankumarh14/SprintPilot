@@ -77,9 +77,19 @@ export const api = {
 
   /* -- Scenario endpoints ------------------------------------------------- */
   getScenarioCompare:   () => get<any>("/api/scenarios/compare"),
+
   scenarioDrop:         (ticketIds: string[]) =>
-    post<any>(`/api/scenarios/drop`, { ticket_ids: ticketIds }),  scenarioCapacity:     (hours: number) =>
-    post<any>(`/api/scenarios/capacity`, { hours }),  scenarioScopeCreep:   (ticketIds: string[]) =>
-    post<any>(`/api/scenarios/scope-creep`, { ticket_ids: ticketIds }),  scenarioPto:          (memberId: string, days: number) =>
-    post<any>(`/api/scenarios/pto`, { member_id: memberId, days }),  scenarioOptimize:     (targetProbability: number) =>
-    post<any>(`/api/scenarios/optimize`, { target_probability: targetProbability }),};
+    post<any>(`/api/scenarios/drop`, { ticket_ids: ticketIds }),
+
+  scenarioCapacity:     (hours: number, memberId?: string) =>
+    post<any>(`/api/scenarios/capacity`, { hours, member_id: memberId }),
+
+  scenarioScopeCreep:   (ticketIds: string[]) =>
+    post<any>(`/api/scenarios/scope-creep`, { ticket_ids: ticketIds }),
+
+  scenarioPto:          (memberId: string, days: number) =>
+    post<any>(`/api/scenarios/pto`, { member_id: memberId, days }),
+
+  scenarioOptimize:     (targetProbability: number) =>
+    post<any>(`/api/scenarios/optimize`, { target_probability: targetProbability }),
+};
