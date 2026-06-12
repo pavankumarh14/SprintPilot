@@ -27,42 +27,25 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
-/* ---------------------------------------------------------------------------
- * TODO — implement post()
- * ---------------------------------------------------------------------------
- * A generic HTTP POST helper mirroring the existing get() above.
- *
- * Parameters:
- *   path : string  — API path, e.g. "/api/board/move"
- *   body : unknown — JSON-serialisable payload
- *
- * Steps:
- *   a. Call fetch(`${BASE}${path}`, {
- *        method:  "POST",
- *        headers: buildHeaders(),        // already includes Content-Type + LLM key
- *        body:    JSON.stringify(body),
- *      })
- *   b. If !res.ok → throw new Error(`API error ${res.status}: ${path}`)
- *   c. Return res.json() cast to T.
- *
- * Acceptance:
- *   - Mirrors get() in error handling.
- *   - buildHeaders() must be called so the LLM key is forwarded on POST too.
- * --------------------------------------------------------------------------- */
 async function post<T>(path: string, body: unknown): Promise<T> {
-  // TODO — implement this function
-  throw new Error("post() not implemented");
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+  return res.json();
 }
 
 export const api = {
-  /* ── Read endpoints (all implemented) ─────────────────────────────────── */
+  /* -- Read endpoints (all implemented) ----------------------------------- */
 
   // Backlog
-  getBacklog:       () => get<any>("/api/backlog/"),
-  getBacklogHistory:() => get<any>("/api/backlog/history"),
-  getDependencies:  () => get<any>("/api/backlog/dependencies"),
-  getAtRisk:        () => get<any>("/api/backlog/at-risk"),
-  getTicket:        (id: string) => get<any>(`/api/backlog/${id}`),
+  getBacklog:        () => get<any>("/api/backlog/"),
+  getBacklogHistory: () => get<any>("/api/backlog/history"),
+  getDependencies:   () => get<any>("/api/backlog/dependencies"),
+  getAtRisk:         () => get<any>("/api/backlog/at-risk"),
+  getTicket:         (id: string) => get<any>(`/api/backlog/${id}`),
 
   // Sprint
   getCurrentSprint: () => get<any>("/api/sprint/current"),
@@ -71,40 +54,38 @@ export const api = {
   getDigest:        () => get<any>("/api/sprint/digest"),
 
   // Forecast
-  getSlippage:      () => get<any>("/api/forecast/slippage"),
-  getVelocity:      () => get<any>("/api/forecast/velocity"),
+  getSlippage:  () => get<any>("/api/forecast/slippage"),
+  getVelocity:  () => get<any>("/api/forecast/velocity"),
 
   // Team / Board
-  getTeam:          () => get<any>("/api/team/"),
-  getBoard:         () => get<any>("/api/board/"),
+  getTeam:  () => get<any>("/api/team/"),
+  getBoard: () => get<any>("/api/board/"),
 
   // LLM status
-  getLlmStatus:     () => get<any>("/api/llm-status"),
+  getLlmStatus: () => get<any>("/api/llm-status"),
 
-  /* ── Write endpoints (stubs — implement post() above first) ───────────── */
+  /* -- Write endpoints ---------------------------------------------------- */
 
-  /* -------------------------------------------------------------------------
-   * TODO — updateTicketStatus()
-   * -------------------------------------------------------------------------
-   * Persist a board column change after drag-and-drop.
-   *
-   * Steps:
-   *   a. Call post<any>("/api/board/move", { ticket_id: ticketId, status: newStatus })
-   *   b. Return the result.
-   *
-   * Backend note: POST /api/board/move does not exist yet — add it in
-   * backend/app/api/board.py (see board.py TODO comment).
-   * ------------------------------------------------------------------------- */
-  updateTicketStatus: (ticketId: string, newStatus: string) => {
-    // TODO — implement this function
-    throw new Error("updateTicketStatus not implemented");
-  },
+  updateTicketStatus: (ticketId: string, newStatus: string) =>
+    post<any>("/api/board/move", { ticket_id: ticketId, status: newStatus }),
 
-  /* ── Integration endpoints ─────────────────────────────────────────────── */
-  getIntegrationStatus: () => get<any>("/api/integrations/status"),
-  saveIntegrationConfig: (cfg: Record<string, string>) =>
-    post<any>("/api/integrations/config", cfg),
-  syncJira:   () => post<any>("/api/integrations/jira/sync",   {}),
+  /* -- Integration endpoints ---------------------------------------------- */
+  getIntegrationStatus:  () => get<any>("/api/integrations/status"),
+  saveIntegrationConfig: (cfg: Record<string, string>) => post<any>("/api/integrations/config", cfg),
+  syncJira:   () => post<any>("/api/integrations/jira/sync", {}),
   syncGitHub: () => post<any>("/api/integrations/github/sync", {}),
-  testSlack:  () => post<any>("/api/integrations/slack/test",  {}),
+  testSlack:  () => post<any>("/api/integrations/slack/test", {}),
+
+  /* -- Scenario endpoints ------------------------------------------------- */
+  getScenarioCompare:   () => get<any>("/api/scenarios/compare"),
+  scenarioDrop:         (ticketIds: string[]) =>
+    post<any>(`/api/scenarios/drop?${ticketIds.map(id => `ticket_ids=${id}`).join("&")}`, {}),
+  scenarioCapacity:     (hours: number) =>
+    post<any>(`/api/scenarios/capacity?hours=${hours}`, {}),
+  scenarioScopeCreep:   (ticketIds: string[]) =>
+    post<any>(`/api/scenarios/scope-creep?${ticketIds.map(id => `ticket_ids=${id}`).join("&")}`, {}),
+  scenarioPto:          (memberId: string, days: number) =>
+    post<any>(`/api/scenarios/pto?member_id=${memberId}&days=${days}`, {}),
+  scenarioOptimize:     (targetProbability: number) =>
+    post<any>(`/api/scenarios/optimize?target_probability=${targetProbability}`, {}),
 };
