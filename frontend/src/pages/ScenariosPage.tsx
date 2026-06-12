@@ -4,8 +4,8 @@ import { api } from "../utils/api";
 import { Zap, TrendingUp, TrendingDown } from "lucide-react";
 
 export default function ScenariosPage() {
-  const { data: comparison } = useApi(() => api.getScenarioCompare());
-  const [loading, setLoading] = useState(false);
+    const { data: comparison } = useApi(() => api.getScenarioCompare().catch(() => null));
+    const [loading, setLoading] = useState(false);
   const [selectedScenario, setSelectedScenario] = useState<any>(null);
 
   const baselineProb = comparison?.baseline?.completion_probability ?? 0.58;
