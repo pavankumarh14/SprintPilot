@@ -14,6 +14,7 @@ const NAV = [
   { to: "/board",        icon: Kanban,          label: "Board" },
   { to: "/forecast",     icon: TrendingDown,    label: "Forecast" },
   { to: "/dependencies", icon: Network,         label: "Dependencies" },
+    { to: "/scenarios",    icon: Zap,             label: "Scenarios" },
   { to: "/team",         icon: Users,           label: "Team" },
   { to: "/settings",     icon: Settings,        label: "Settings" },
 ];
